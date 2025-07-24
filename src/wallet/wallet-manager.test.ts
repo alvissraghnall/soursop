@@ -2,6 +2,16 @@ import { WalletManager, WalletInfo } from './wallet-manager';
 import { Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import bs58 from 'bs58';
 import * as bip39 from 'bip39';
+import { WalletModel } from './model';
+import { encrypt } from '../util/encrypt-decrypt';
+import { PASSWORD } from '../util/constants';
+import { Types } from 'mongoose';
+
+jest.mock('./model');
+jest.mock('../util/encrypt-decrypt');
+jest.mock('../util/constants', () => ({
+  PASSWORD: 'test_password',
+}));
 
 jest.mock('@solana/web3.js', () => {
   const actual = jest.requireActual('@solana/web3.js');
@@ -138,4 +148,88 @@ describe('WalletManager', () => {
       expect(spy).not.toHaveBeenCalled();
     });
   });
+
+  
+  describe('store', () => {
+    it('should encrypt private key and mnemonic and store wallet', async () => {
+      const wallet = {
+        privateKey: 'privateKey123',
+        publicKey: 'publicKey123',
+        mnemonic: 'mnemonic123',
+      };
+      const userId = 42;
+      const encryptedKey = Buffer.from('encryptedKey').toString('base64');
+      const encryptedMnemonic = Buffer.from('encryptedMnemonic').toString('base64');
+      const mockId = new Types.ObjectId();
+
+      (encrypt as jest.Mock).mockImplementation((data: string) =>
+        data === wallet.privateKey ? Buffer.from('encryptedKey') : Buffer.from('encryptedMnemonic')
+      );
+
+      (WalletModel.createAndSave as jest.Mock).mockResolvedValue({
+        _id: mockId,
+      });
+
+      const result = await walletManager.store(wallet, userId);
+
+      expect(encrypt).toHaveBeenCalledWith(wallet.privateKey, PASSWORD);
+      expect(encrypt).toHaveBeenCalledWith(wallet.mnemonic, PASSWORD);
+      expect(WalletModel.createAndSave).toHaveBeenCalledWith({
+        userId,
+        address: wallet.publicKey,
+        encryptedPrivateKey: encryptedKey,
+        encryptedMnemonic,
+      });
+      expect(result).toEqual(mockId);
+    });
+
+    it('should store wallet with undefined encryptedMnemonic if mnemonic is not provided', async () => {
+      const wallet = {
+        privateKey: 'privateKey123',
+        publicKey: 'publicKey123',
+      };
+      const userId = 42;
+      const encryptedKey = Buffer.from('encryptedKey').toString('base64');
+      const mockId = new Types.ObjectId();
+
+      (encrypt as jest.Mock).mockResolvedValue(Buffer.from('encryptedKey'));
+      (WalletModel.createAndSave as jest.Mock).mockResolvedValue({ _id: mockId });
+
+      const result = await walletManager.store(wallet as any, userId);
+
+      expect(encrypt).toHaveBeenCalledWith(wallet.privateKey, PASSWORD);
+      expect(WalletModel.createAndSave).toHaveBeenCalledWith({
+        userId,
+        address: wallet.publicKey,
+        encryptedPrivateKey: encryptedKey,
+        encryptedMnemonic: undefined,
+      });
+      expect(result).toEqual(mockId);
+    });
+  });
+
+  describe('retrieve', () => {
+    it('should retrieve wallet by userId', async () => {
+      const userId = 42;
+      const mockWallet = { address: 'address123', encryptedPrivateKey: 'abc' };
+
+      (WalletModel.findByUserId as jest.Mock).mockResolvedValue(mockWallet);
+
+      const result = await walletManager.retrieve(userId);
+
+      expect(WalletModel.findByUserId).toHaveBeenCalledWith(userId);
+      expect(result).toBe(mockWallet);
+    });
+  });
+
+  describe('connection getter/setter', () => {
+    it('should set and get connection', () => {
+      const mockConnection = { name: 'mockConnection' } as any;
+
+      walletManager.connection = mockConnection;
+
+      expect(walletManager.connection).toBe(mockConnection);
+    });
+  });
 });
+  

@@ -48,6 +48,9 @@ importers:
       jest:
         specifier: ^30.0.4
         version: 30.0.4(@types/node@24.0.15)(ts-node@10.9.2(@types/node@24.0.15)(typescript@5.8.3))
+      mongodb-memory-server:
+        specifier: ^10.1.4
+        version: 10.1.4
       ts-jest:
         specifier: ^29.4.0
         version: 29.4.0(@babel/core@7.28.0)(@jest/transform@30.0.4)(@jest/types@30.0.1)(babel-jest@30.0.4(@babel/core@7.28.0))(jest-util@30.0.2)(jest@30.0.4(@types/node@24.0.15)(ts-node@10.9.2(@types/node@24.0.15)(typescript@5.8.3)))(typescript@5.8.3)

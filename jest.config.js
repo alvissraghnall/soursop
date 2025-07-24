@@ -1,12 +1,11 @@
-const { createDefaultPreset } = require("ts-jest");
+const { createDefaultPreset } = require('ts-jest');
 
-const tsJestTransformCfg = createDefaultPreset().transform;
+const tsJestPreset = createDefaultPreset();
 
-/** @type {import("jest").Config} **/
+/** @type {import('jest').Config} */
 module.exports = {
-  preset: '@shelf/jest-mongodb',
-  //testEnvironment: "node",
   transform: {
-    ...tsJestTransformCfg,
+    ...tsJestPreset.transform,
   },
+  testEnvironment: 'node',
 };

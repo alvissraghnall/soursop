@@ -1,5 +1,6 @@
 import { prop, getModelForClass, modelOptions, ReturnModelType, DocumentType } from '@typegoose/typegoose';
 import { MongoError, MongoServerError } from 'mongodb';
+import mongoose from 'mongoose';
 
 @modelOptions({ schemaOptions: { timestamps: true } })
 class Wallet {
@@ -33,10 +34,12 @@ class Wallet {
       const wallet = new this(data);
       return await wallet.save();
     } catch (error) {
-      if (error instanceof MongoServerError && error.code === 11000) {
+      console.log(typeof error)
+      if (error instanceof mongoose.mongo.MongoServerError && error.code === 11000) {
         const field = Object.keys(error.keyPattern ?? {})[0];
         throw new Error(`Duplicate value for field: ${field}`);
       }
+      
       throw error;
     }
   

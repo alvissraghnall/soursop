@@ -154,10 +154,10 @@ export class WalletManager {
   }
 
   get connection() {
-    return this.connection;
+    return this._connection;
   }
 
   set connection(value: Connection) {
-    this.connection = value;
+    this._connection = value;
   }
 }
