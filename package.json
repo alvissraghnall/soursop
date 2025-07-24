@@ -4,7 +4,7 @@
   "description": "",
   "main": "src/index.ts",
   "scripts": {
-    "test": "jest",
+    "test": "pnpm exec dotenvx run -- jest",
     "dev": "pnpm exec dotenvx run -- ts-node src/index.ts"
   },
   "keywords": [],
