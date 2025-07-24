@@ -74,4 +74,49 @@ export async function handleImportCommand (ctx: Context, userStates: Map<number,
   );
 
   userStates.set(ctx.from?.id ?? -1, UserStates.AWAITING_IMPORT);
+
+}
+
+export async function handleImportWalletTextMessage(ctx: any, next: () => Promise<void>, userStates: Map<number, UserStates>) {
+  const userId = ctx.from.id;
+  const userState = userStates.get(userId);
+ 
+  console.log(ctx.from);
+
+  if (userState === UserStates.AWAITING_IMPORT) {
+    const input = ctx.message.text.trim();
+    const walletManager = new WalletManager();
+
+    try {
+      let wallet;
+      if (/^(\w+\s){11,23}\w+$/.test(input)) {
+        wallet = await walletManager.importFromMnemonic(input);
+      } else {
+        wallet = await walletManager.importFromPrivateKey(input);
+      }
+
+      const walletId = await walletManager.store(wallet, userId);
+
+      console.log(walletId);
+
+      await ctx.deleteMessage(ctx.message.message_id);
+
+      await ctx.reply(
+        '✅ Wallet imported successfully!\n\n' +
+        `🏦 Address: \`${wallet.publicKey}\`\n` +
+        `💾 Wallet ID: ${walletId}\n\n` +
+        '🔒 Your secret has been encrypted and stored securely.',
+        { parse_mode: 'Markdown' }
+      );
+    } catch (error) {
+      const err = error as Error;
+      await ctx.reply(`❌ Error importing wallet: ${err.message}`);
+    } finally {
+      userStates.delete(userId);
+    }
+
+    return;
+  }
+
+  return next();
 }

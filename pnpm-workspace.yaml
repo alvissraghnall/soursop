@@ -1,3 +1,4 @@
 onlyBuiltDependencies:
   - bufferutil
+  - mongodb-memory-server
   - utf-8-validate

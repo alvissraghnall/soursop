@@ -1,14 +1,15 @@
 import { prop, getModelForClass, modelOptions, ReturnModelType, DocumentType } from '@typegoose/typegoose';
+import { MongoError, MongoServerError } from 'mongodb';
 
 @modelOptions({ schemaOptions: { timestamps: true } })
 class Wallet {
-  @prop({ required: true })
+  @prop({ required: true, unique: true })
   userId!: number;
 
-  @prop({ required: true })
+  @prop({ required: true, unique: true })
   address!: string;
 
-  @prop({ required: true })
+  @prop({ required: true, unique: true })
   encryptedPrivateKey!: string;
 
   @prop()
@@ -27,8 +28,18 @@ class Wallet {
     encryptedPrivateKey: string;
     encryptedMnemonic?: string;
   }) {
-    const wallet = new this(data);
-    return wallet.save();
+
+    try {
+      const wallet = new this(data);
+      return await wallet.save();
+    } catch (error) {
+      if (error instanceof MongoServerError && error.code === 11000) {
+        const field = Object.keys(error.keyPattern ?? {})[0];
+        throw new Error(`Duplicate value for field: ${field}`);
+      }
+      throw error;
+    }
+  
   }
 }
 
