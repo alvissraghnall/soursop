@@ -1,4 +1,5 @@
 onlyBuiltDependencies:
+  - bigint-buffer
   - bufferutil
   - mongodb-memory-server
   - utf-8-validate
