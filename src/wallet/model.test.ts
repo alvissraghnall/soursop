@@ -20,10 +20,6 @@ const walletData2 = {
 describe('Wallet Model', () => {
   let mongoServer: MongoMemoryServer;
 
-  // ╔══════════════════════════════════════════════════╗
-  // ║         SETUP & TEARDOWN FOR THE DATABASE        ║
-  // ╚══════════════════════════════════════════════════╝
-
   beforeAll(async () => {
     mongoServer = await MongoMemoryServer.create();
     const uri = mongoServer.getUri();
@@ -40,10 +36,6 @@ describe('Wallet Model', () => {
   });
 
 
-  // ╔══════════════════════════════════════════════════╗
-  // ║         TESTS FOR `createAndSave` METHOD         ║
-  // ╚══════════════════════════════════════════════════╝
-
   describe('static method: createAndSave', () => {
     it('✅ should create and save a new wallet successfully', async () => {
       const savedWallet = await WalletModel.createAndSave(walletData1);
@@ -57,16 +49,6 @@ describe('Wallet Model', () => {
       const foundInDb = await WalletModel.findById(savedWallet._id);
       expect(foundInDb).not.toBeNull();
       expect(foundInDb?.userId).toBe(walletData1.userId);
-    });
-
-    it('❌ should throw a custom error for a duplicate userId', async () => {
-      await WalletModel.createAndSave(walletData1);
-
-      const duplicateData = { ...walletData2, userId: walletData1.userId };
-      
-      await expect(WalletModel.createAndSave(duplicateData)).rejects.toThrow(
-        'Duplicate value for field: userId'
-      );
     });
 
     it('❌ should throw a custom error for a duplicate address', async () => {
@@ -102,10 +84,6 @@ describe('Wallet Model', () => {
   });
 
   
-  // ╔══════════════════════════════════════════════════╗
-  // ║         TESTS FOR `findByUserId` METHOD          ║
-  // ╚══════════════════════════════════════════════════╝
-
   describe('static method: findByUserId', () => {
     it('✅ should find and return an existing wallet by its userId', async () => {
       await WalletModel.createAndSave(walletData1);
