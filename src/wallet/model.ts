@@ -4,7 +4,7 @@ import mongoose from 'mongoose';
 
 @modelOptions({ schemaOptions: { timestamps: true } })
 class Wallet {
-  @prop({ required: true, unique: true })
+  @prop({ required: true })
   userId!: number;
 
   @prop({ required: true, unique: true })
