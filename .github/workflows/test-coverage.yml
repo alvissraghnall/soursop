@@ -37,6 +37,8 @@ jobs:
 
       - name: Run tests with coverage
         run: pnpm test:coverage:ci
+        env:
+          DOTENV_PRIVATE_KEY_CI: ${{ secrets.DOTENV_PRIVATE_KEY_CI }}
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
