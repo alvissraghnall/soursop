@@ -1,218 +1,156 @@
 import { WalletManager, WalletInfo } from './wallet-manager';
 import * as bip39 from 'bip39';
-import bs58 from 'bs58';
 
-describe('WalletManager Tests', () => {
+describe('WalletManager Integration Tests', () => {
   let walletManager: WalletManager;
   let testWallet: WalletInfo;
-  
-  const VALID_MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-  const INVALID_MNEMONIC = 'invalid mnemonic phrase';
-  
+
+  const VALID_MNEMONIC = 'pill tomorrow foster begin walnut borrow virtual kick shift mutual shoe scatter';
+  const VALID_MNEMONIC_PUBLIC_KEY = '5F86TNSTre3CYwZd1wELsGQGhqG2HkN3d8zxhbyBSnzm';
+
   beforeAll(async () => {
+
     walletManager = new WalletManager();
+
     testWallet = await walletManager.generateWallet();
   });
 
-  describe('Constructor and Configuration', () => {
-    test('should initialize with default RPC', () => {
-      const defaultManager = new WalletManager();
-      expect(defaultManager).toBeInstanceOf(WalletManager);
-    });
-
-  });
-
   describe('Wallet Generation', () => {
-    test('should generate a new wallet successfully', async () => {
+    test('should generate a new wallet successfully with valid properties', async () => {
       const wallet = await walletManager.generateWallet();
-      
+
       expect(wallet).toHaveProperty('publicKey');
+      expect(wallet.publicKey).toBeInstanceOf(CryptoKey);
       expect(wallet).toHaveProperty('privateKey');
+      expect(wallet.privateKey).toBeInstanceOf(CryptoKey);
       expect(wallet).toHaveProperty('mnemonic');
-      expect(typeof wallet.publicKey).toBe('string');
-      expect(typeof wallet.privateKey).toBe('string');
       expect(typeof wallet.mnemonic).toBe('string');
-      expect(wallet.publicKey).toHaveLength(44);
+
       expect(bip39.validateMnemonic(wallet.mnemonic!)).toBe(true);
+
+      const [, publicKeyBs58] = await walletManager.exportKeyPair(wallet);
+      expect(walletManager.isValidAddress(publicKeyBs58)).toBe(true);
     });
 
-    test('should generate unique wallets', async () => {
+    test('should generate unique wallets on each call', async () => {
       const wallet1 = await walletManager.generateWallet();
       const wallet2 = await walletManager.generateWallet();
-      
-      expect(wallet1.publicKey).not.toBe(wallet2.publicKey);
-      expect(wallet1.privateKey).not.toBe(wallet2.privateKey);
-      expect(wallet1.mnemonic).not.toBe(wallet2.mnemonic);
-    });
 
-    test('should generate valid keypair from generated wallet', async () => {
-      const wallet = await walletManager.generateWallet();
-      const keypair = walletManager.getKeypair(wallet);
-      
-      expect(keypair).toBeInstanceOf(Keypair);
-      expect(keypair.publicKey.toBase58()).toBe(wallet.publicKey);
+      const [, pubKey1] = await walletManager.exportKeyPair(wallet1);
+      const [, pubKey2] = await walletManager.exportKeyPair(wallet2);
+
+      expect(pubKey1).not.toBe(pubKey2);
+      expect(wallet1.mnemonic).not.toBe(wallet2.mnemonic);
     });
   });
 
   describe('Mnemonic Import', () => {
-    test('should import wallet from valid mnemonic', async () => {
+    test('should import a wallet correctly from a valid mnemonic', async () => {
       const wallet = await walletManager.importFromMnemonic(VALID_MNEMONIC);
-      
-      expect(wallet).toHaveProperty('publicKey');
-      expect(wallet).toHaveProperty('privateKey');
-      expect(wallet).toHaveProperty('mnemonic');
+      const [, publicKeyBs58] = await walletManager.exportKeyPair(wallet);
+
       expect(wallet.mnemonic).toBe(VALID_MNEMONIC);
+      expect(publicKeyBs58).toBe(VALID_MNEMONIC_PUBLIC_KEY);
     });
 
-    test('should reject invalid mnemonic', async () => {
-      await expect(walletManager.importFromMnemonic(INVALID_MNEMONIC))
-        .rejects.toThrow('Failed to import from mnemonic');
-    });
-
-    test('should generate consistent wallet from same mnemonic', async () => {
+    test('should generate consistent wallets from the same mnemonic', async () => {
       const wallet1 = await walletManager.importFromMnemonic(VALID_MNEMONIC);
       const wallet2 = await walletManager.importFromMnemonic(VALID_MNEMONIC);
-      
-      expect(wallet1.publicKey).toBe(wallet2.publicKey);
-      expect(wallet1.privateKey).toBe(wallet2.privateKey);
+
+      const [, pubKey1] = await walletManager.exportKeyPair(wallet1);
+      const [, pubKey2] = await walletManager.exportKeyPair(wallet2);
+
+      expect(pubKey1).toBe(pubKey2);
     });
 
-    test('should reject empty mnemonic', async () => {
-      await expect(walletManager.importFromMnemonic(''))
-        .rejects.toThrow('Failed to import from mnemonic');
+    test('should reject an invalid mnemonic phrase', async () => {
+      await expect(walletManager.importFromMnemonic('invalid mnemonic phrase')).rejects.toThrow('Failed to import from mnemonic');
+    });
+
+    test('should reject an empty mnemonic', async () => {
+      await expect(walletManager.importFromMnemonic('')).rejects.toThrow('Failed to import from mnemonic');
     });
   });
 
   describe('Private Key Import', () => {
-    test('should import wallet from Base58 private key', async () => {
+    test('should import wallet from a Base58 private key', async () => {
       const originalWallet = await walletManager.generateWallet();
-      const importedWallet = await walletManager.importFromPrivateKey(originalWallet.privateKey);
-      
-      expect(importedWallet.publicKey).toBe(originalWallet.publicKey);
-      expect(importedWallet.privateKey).toBe(originalWallet.privateKey);
+      const [privKeyBs58, pubKeyBs58] = await walletManager.exportKeyPair(originalWallet);
+
+      const importedWallet = await walletManager.importFromPrivateKey(privKeyBs58);
+      const [, importedPubKey] = await walletManager.exportKeyPair(importedWallet);
+
+      expect(importedPubKey).toBe(pubKeyBs58);
       expect(importedWallet.mnemonic).toBeUndefined();
     });
 
-    test('should import wallet from hex private key', async () => {
-      const keypair = Keypair.generate();
-      const hexKey = Buffer.from(keypair.secretKey).toString('hex');
-      
+    test('should import wallet from a hex private key', async () => {
+      const originalWallet = await walletManager.generateWallet();
+      const privateKeyPkcs8 = await crypto.subtle.exportKey('pkcs8', originalWallet.privateKey);
+
+      const hexKey = Buffer.from(privateKeyPkcs8).subarray(16).toString('hex');
+
       const importedWallet = await walletManager.importFromPrivateKey(hexKey);
-      
-      expect(importedWallet.publicKey).toBe(keypair.publicKey.toBase58());
+      const [, importedPubKey] = await walletManager.exportKeyPair(importedWallet);
+      const [, originalPubKey] = await walletManager.exportKeyPair(originalWallet);
+
+      expect(importedPubKey).toBe(originalPubKey);
     });
 
-    test('should import wallet from array format private key', async () => {
-      const keypair = Keypair.generate();
-      const arrayKey = JSON.stringify(Array.from(keypair.secretKey));
-      
+    test('should import wallet from an array format private key', async () => {
+      const originalWallet = await walletManager.generateWallet();
+      const privateKeyPkcs8 = await crypto.subtle.exportKey('pkcs8', originalWallet.privateKey);
+
+      const arrayKey = JSON.stringify(Array.from(new Uint8Array(privateKeyPkcs8)));
+
       const importedWallet = await walletManager.importFromPrivateKey(arrayKey);
-      
-      expect(importedWallet.publicKey).toBe(keypair.publicKey.toBase58());
+      const [, importedPubKey] = await walletManager.exportKeyPair(importedWallet);
+      const [, originalPubKey] = await walletManager.exportKeyPair(originalWallet);
+
+      expect(importedPubKey).toBe(originalPubKey);
     });
 
-    test('should reject invalid private key formats', async () => {
-      await expect(walletManager.importFromPrivateKey('invalid-key'))
-        .rejects.toThrow('Failed to import from private key');
+    test('should reject an invalid private key format', async () => {
+      await expect(walletManager.importFromPrivateKey('this-is-not-a-valid-key')).rejects.toThrow('Failed to import from private key');
     });
 
-    test('should reject malformed array private key', async () => {
-      await expect(walletManager.importFromPrivateKey('[1,2,3]'))
-        .rejects.toThrow('Failed to import from private key');
+    test('should reject a malformed (too short) array private key', async () => {
+      await expect(walletManager.importFromPrivateKey('[1,2,3]')).rejects.toThrow('Key is too short');
     });
   });
 
   describe('Balance Operations', () => {
-    test('should get balance for valid public key', async () => {
-      const balance = await walletManager.getBalance(testWallet.publicKey);
-      
-      expect(typeof balance).toBe('number');
-      expect(balance).toBeGreaterThanOrEqual(0);
+    test('should get balance for a valid public key', async () => {
+      const [, pubKeyBs58] = await walletManager.exportKeyPair(testWallet);
+      const balance = await walletManager.getBalance(pubKeyBs58);
+
+      expect(typeof balance).toBe('bigint');
+      expect(balance).toBeGreaterThanOrEqual(0n);
     });
 
-    test('should handle invalid public key in balance check', async () => {
-      await expect(walletManager.getBalance('invalid-address'))
-        .rejects.toThrow('Failed to get balance');
-    });
-
-    test('should return 0 balance for new wallet', async () => {
+    test('should return 0 balance for a new wallet', async () => {
       const newWallet = await walletManager.generateWallet();
-      const balance = await walletManager.getBalance(newWallet.publicKey);
-      
-      expect(balance).toBe(0);
+      const [, pubKeyBs58] = await walletManager.exportKeyPair(newWallet);
+      const balance = await walletManager.getBalance(pubKeyBs58);
+
+      expect(balance).toBe(0n);
+    });
+
+    test('should throw an error when checking balance for an invalid address', async () => {
+      await expect(walletManager.getBalance('invalid-solana-address')).rejects.toThrow('Failed to get balance');
     });
   });
 
-  describe('Utility Functions', () => {
-    test('should validate valid Solana addresses', () => {
-      expect(walletManager.isValidAddress(testWallet.publicKey)).toBe(true);
+  describe('Address Validation', () => {
+    test('should correctly validate a valid Solana address', async () => {
+      const [, pubKeyBs58] = await walletManager.exportKeyPair(testWallet);
+      expect(walletManager.isValidAddress(pubKeyBs58)).toBe(true);
     });
 
-    test('should reject invalid addresses', () => {
-      expect(walletManager.isValidAddress('invalid')).toBe(false);
+    test('should reject an invalid Solana address', () => {
+      expect(walletManager.isValidAddress('invalid-address')).toBe(false);
+      expect(walletManager.isValidAddress('12345')).toBe(false);
       expect(walletManager.isValidAddress('')).toBe(false);
-      expect(walletManager.isValidAddress('123')).toBe(false);
     });
-
-    test('should create keypair from wallet info', () => {
-      const keypair = walletManager.getKeypair(testWallet);
-      
-      expect(keypair).toBeInstanceOf(Keypair);
-      expect(keypair.publicKey.toBase58()).toBe(testWallet.publicKey);
-    });
-
-    test('should handle invalid private key in getKeypair', () => {
-      const invalidWallet: WalletInfo = {
-        publicKey: testWallet.publicKey,
-        privateKey: 'invalid-key'
-      };
-      
-      expect(() => walletManager.getKeypair(invalidWallet))
-        .toThrow('Failed to create keypair');
-    });
-  });
-
-  describe('Connection Management', () => {
-    test('should update connection when setting new RPC endpoint', () => {
-      const manager = new WalletManager();
-      const testnetRpc = clusterApiUrl('testnet');
-      
-      manager.setRpcEndpoint(testnetRpc);
-      expect(manager).toBeInstanceOf(WalletManager);
-    });
-  });
-});
-
-
-describe('Integration Between WalletManager and TelegramWalletHandler', () => {
-  test('should maintain consistency between direct WalletManager and TelegramWalletHandler', async () => {
-    const walletManager = new WalletManager(clusterApiUrl('devnet'));
-    const handler = new TelegramWalletHandler(clusterApiUrl('devnet'));
-    
-    const directWallet = await walletManager.generateWallet();
-    
-    const userId = 9999;
-    await handler.handleImportMnemonic(userId, directWallet.mnemonic!);
-    const handlerWallet = handler.getUserWallet(userId);
-    
-    expect(handlerWallet!.publicKey).toBe(directWallet.publicKey);
-    expect(handlerWallet!.privateKey).toBe(directWallet.privateKey);
-  });
-
-  test('should handle same operations with consistent results', async () => {
-    const walletManager = new WalletManager(clusterApiUrl('devnet'));
-    const handler = new TelegramWalletHandler(clusterApiUrl('devnet'));
-    
-    const MNEMONIC = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-    
-    const directWallet = await walletManager.importFromMnemonic(MNEMONIC);
-    
-    const userId = 8888;
-    await handler.handleImportMnemonic(userId, MNEMONIC);
-    const handlerWallet = handler.getUserWallet(userId);
-    
-    expect(handlerWallet!.publicKey).toBe(directWallet.publicKey);
-    expect(handlerWallet!.privateKey).toBe(directWallet.privateKey);
-    expect(handlerWallet!.mnemonic).toBe(directWallet.mnemonic);
   });
 });
