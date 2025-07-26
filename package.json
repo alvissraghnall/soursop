@@ -6,7 +6,7 @@
   "scripts": {
     "test": "pnpm exec dotenvx run -- jest",
     "test:coverage": "pnpm exec dotenvx run -- jest --coverage",
-    "test:coverage:ci": "pnpm exec dotenvx run -f -- jest --coverage",
+    "test:coverage:ci": "pnpm exec dotenvx run -f .env.ci -- jest --coverage",
     "dev": "pnpm exec dotenvx run -- ts-node src/index.ts"
   },
   "keywords": [],
