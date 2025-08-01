@@ -1,10 +1,11 @@
 
 import fetch from 'cross-fetch';
-import { executeSwap, getDecimals, getJupiterQuote, getSwapInstructions, QuoteResponse, SwapInstructionsResponse } from './jupiter';
+import { executeSwap, getDecimals, getJupiterQuote, getSwapInstructions, QuoteResponse, SwapInstructionsResponse, simulateSwap } from './jupiter';
 import { createClient } from '../client';
 import { fetchMint } from '@solana-program/token-2022';
-import { address } from '@solana/kit';
+import { address, generateKeyPair } from '@solana/kit';
 import { FetchError } from '../errors/fetch.error';
+import { generateKeyPairSigner } from '@solana/kit';
 
 import {
   appendTransactionMessageInstructions,
@@ -18,6 +19,8 @@ import {
   createSignerFromKeyPair
 } from '@solana/kit';
 import { convertJupiterInstructionToKit } from '../util/convert-jup-instruction-to-kit';
+
+let originalFetch = fetch;
 
 
 jest.mock('../client');
@@ -125,7 +128,9 @@ describe('jupiter', () => {
 
   afterEach(() => {
     consoleLogSpy.mockRestore();
+    jest.clearAllMocks();
   });
+
 
   describe('getDecimals', () => {
     it('should fetch and return the decimals for a given token mint', async () => {
@@ -242,7 +247,7 @@ describe('jupiter', () => {
         const networkError = new Error('Network failed');
         mockFetch.mockRejectedValue(networkError);
 
-        await expect(getJupiterQuote(inputMint, outputMint, amount, slippageBps)).rejects.toThrow(networkError);
+        await expect(getJupiterQuote(inputMint, outputMint, amount, slippageBps)).rejects.toThrow(networkError);     
     });
   });
 
@@ -361,3 +366,43 @@ describe('jupiter', () => {
   });
 });
 
+
+describe('Swap Actual Test', () => {
+
+  beforeAll(() => {
+    jest.restoreAllMocks();
+  })
+  
+  it(
+    'should get a real quote and successfully simulate the transaction',
+    async () => {
+      // 1. Generate a temporary, in-memory wallet.
+      const walletSigner = await generateKeyPairSigner();
+
+      const quoteResponse = await getJupiterQuote(
+        'So11111111111111111111111111111111111111112', // SOL
+        'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+        100000, // 0.0001 SOL
+        50,
+      );
+
+      const swapInstructions = await getSwapInstructions(
+        quoteResponse,
+        walletSigner.address,
+      );
+
+      console.log(swapInstructions);
+
+      const simulationResult = await simulateSwap(walletSigner, swapInstructions);
+
+      // 5. Assert that the simulation was successful.
+      expect(simulationResult.value.err).toBeNull();
+      expect(simulationResult.value.logs).not.toBeNull();
+
+      console.log('✅ Successfully simulated a mainnet transaction.');
+      console.log(`- Transaction logs: ${simulationResult.value.logs?.length} lines`);
+      console.log(simulationResult.value);
+    },
+    30000
+  );
+});

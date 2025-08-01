@@ -14,6 +14,7 @@
   "license": "ISC",
   "packageManager": "pnpm@10.10.0",
   "dependencies": {
+    "@metaplex-foundation/mpl-token-metadata": "^3.4.0",
     "@solana-program/system": "^0.7.0",
     "@solana-program/token": "^0.5.1",
     "@solana-program/token-2022": "^0.4.2",

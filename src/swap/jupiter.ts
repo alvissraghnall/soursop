@@ -1,27 +1,29 @@
 import fetch from 'cross-fetch';
 
-import { TransactionInstruction, VersionedTransaction } from '@solana/web3.js';
-import { address, appendTransactionMessageInstructions, compileTransaction, createSignerFromKeyPair, createSolanaRpc, createSolanaRpcSubscriptionsFromTransport, createTransactionMessage, getSignatureFromTransaction, Instruction, pipe, sendAndConfirmTransactionFactory, setTransactionMessageFeePayerSigner, setTransactionMessageLifetimeUsingBlockhash, signTransaction, signTransactionMessageWithSigners, SOLANA_ERROR__TRANSACTION_ERROR__BLOCKHASH_NOT_FOUND } from '@solana/kit';
-import { fetchMint, getUpdateMultiplierScaledUiMintInstruction } from '@solana-program/token-2022';
-import { createClient } from '../client';
+import { address, appendTransactionMessageInstructions, Base64EncodedBytes, compileTransaction, compressTransactionMessageUsingAddressLookupTables, createSignerFromKeyPair, createSolanaRpc, createSolanaRpcSubscriptionsFromTransport, createTransactionMessage, fetchAddressesForLookupTables, getAddressDecoder, getBase64EncodedWireTransaction, getComputeUnitEstimateForTransactionMessageFactory, getSignatureFromTransaction, Instruction, KeyPairSigner, pipe, sendAndConfirmTransactionFactory, setTransactionMessageFeePayerSigner, setTransactionMessageLifetimeUsingBlockhash, signTransaction, signTransactionMessageWithSigners, SOLANA_ERROR__TRANSACTION_ERROR__BLOCKHASH_NOT_FOUND, Transaction, TransactionWithBlockhashLifetime } from '@solana/kit';
+import { fetchMint, getInitializeScaledUiAmountMintScaledUiAmountMintDiscriminatorBytes, getUpdateMultiplierScaledUiMintInstruction, TOKEN_2022_PROGRAM_ADDRESS } from '@solana-program/token-2022';
+import { Client, createClient } from '../client';
 import { decodeJupiterTransaction } from '../util/decode-jup-transaction';
 import { FetchError } from '../errors/fetch.error';
 import { convertJupiterInstructionToKit } from '../util/convert-jup-instruction-to-kit';
+import { findAssociatedTokenPda } from '@solana-program/token';
 
-export const getDecimals = async (tokenMint: string) => {
+export const getTokenInfo = async (tokenMint: string) => {
   const client = await createClient();
 
   const mintAddress = address(tokenMint);
 
   const account = await fetchMint(client.rpc, mintAddress);
 
-  const decimals = account.data.decimals;
-
-  console.log(`Token decimals: ${decimals}`);
-  return decimals;
+  return account.data;
 };
 
-const JUPITER_API_URL = 'https://quote-api.jup.ag/v6';
+export const getDecimals = async (tokenMint: string) => {
+  return (await getTokenInfo(tokenMint)).decimals;
+}
+
+// const JUPITER_API_URL = 'https://quote-api.jup.ag/v6';
+const JUPITER_API_URL = 'https://lite-api.jup.ag/swap/v1';
 
 export interface QuoteResponse {
   inputMint: string;
@@ -61,18 +63,30 @@ export interface SwapInstructionsResponse {
     addressLookupTableAddresses: Array<string>;
 }
 
+/**
+ * A function that handles getting a quote.
+ *
+ * @param inputMint The token you are selling.
+ * @param outputMint The token you are buying.
+ * @param humanAmount The human-readable amount to swap (e.g., 1.5).
+ * @param slippageBps The slippage in basis points.
+ */
 export const getJupiterQuote = async (
   inputMint: string,
   outputMint: string,
-  amount: number,
+  humanAmount: number,
   slippageBps: number
 ): Promise<QuoteResponse> => {
-  const amountInSmallestUnit = Math.floor(amount * 10 ** 6);
+
+  const inputDecimals = await getDecimals(inputMint);
+
+  // 2. Convert the human-readable amount to the base integer unit
+  const amountInBaseUnits = Math.round(humanAmount * (10 ** inputDecimals));
 
   const url = new URL(`${JUPITER_API_URL}/quote`);
   url.searchParams.append('inputMint', inputMint);
   url.searchParams.append('outputMint', outputMint);
-  url.searchParams.append('amount', amountInSmallestUnit.toString());
+  url.searchParams.append('amount', amountInBaseUnits.toString());
   url.searchParams.append('slippageBps', slippageBps.toString());
 
   const response = await fetch(url.toString());
@@ -133,17 +147,23 @@ export const executeSwap = async (
 
 */
 
-export const executeSwap = async (
-  wallet: CryptoKeyPair,
-  swapInstructionResponse: Partial<SwapInstructionsResponse> & Required<Pick<SwapInstructionsResponse, 'swapInstruction'>>
-): Promise<string> => {
-  const client = await createClient();
-  const walletSigner = await createSignerFromKeyPair(wallet);
+export type NominalType<TKey extends string, TMarker extends string> = {
+    readonly [K in `__${TKey}:@solana/kit`]: TMarker;
+};
 
-  const { tokenLedgerInstruction, computeBudgetInstructions, setupInstructions, swapInstruction, cleanupInstruction } = 
+export const getSignedSwapTransaction = async (
+  client: Client,
+  signer: KeyPairSigner<string>,
+  swapInstructionResponse: Partial<SwapInstructionsResponse> & Required<Pick<SwapInstructionsResponse, 'swapInstruction' | 'addressLookupTableAddresses'>>
+): Promise<TransactionWithBlockhashLifetime & Transaction & NominalType<"transactionSignedness", "fullySigned">> => {
+  
+  const { tokenLedgerInstruction, computeBudgetInstructions, setupInstructions, swapInstruction, cleanupInstruction, addressLookupTableAddresses } = 
     swapInstructionResponse;
 
-
+  const addr3ss3s = addressLookupTableAddresses.map((addy) => address(addy))
+  
+  const addressesForLookupTables = await fetchAddressesForLookupTables(addr3ss3s, client.rpc)
+    
   const { value: latestBlockhash } = await client.rpc.getLatestBlockhash().send();
 
   const allInstructions = [
@@ -151,18 +171,30 @@ export const executeSwap = async (
     ...(setupInstructions?.map(convertJupiterInstructionToKit) || []),
     convertJupiterInstructionToKit(swapInstruction),
     ...(cleanupInstruction ? [convertJupiterInstructionToKit(cleanupInstruction)] : []),
-    ...(tokenLedgerInstruction ? [convertJupiterInstructionToKit(tokenLedgerInstruction)] : []),
+//    ...(tokenLedgerInstruction ? [convertJupiterInstructionToKit(tokenLedgerInstruction)] : []),
   ];
 
   const transactionMessage = pipe(
     createTransactionMessage({ version: 0 }),
-    (tx) => setTransactionMessageFeePayerSigner(walletSigner, tx),
+    (tx) => setTransactionMessageFeePayerSigner(signer, tx),
     (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
     (tx) => appendTransactionMessageInstructions(allInstructions, tx)
   );
 
-  const compiledTransaction = compileTransaction(transactionMessage);
-  const signedTransaction = await signTransactionMessageWithSigners(transactionMessage);
+  const compressedTransactionMessage = compressTransactionMessageUsingAddressLookupTables(transactionMessage, addressesForLookupTables);
+  const signedTransaction = await signTransactionMessageWithSigners(compressedTransactionMessage);
+
+  return signedTransaction;
+}
+
+export const executeSwap = async (
+  wallet: CryptoKeyPair,
+  swapInstructionResponse: Partial<SwapInstructionsResponse> & Required<Pick<SwapInstructionsResponse, 'swapInstruction' | 'addressLookupTableAddresses'>>
+): Promise<string> => {
+  const client = await createClient();
+  const walletSigner = await createSignerFromKeyPair(wallet);
+
+  const signedTransaction = await getSignedSwapTransaction(client, walletSigner, swapInstructionResponse);
     
   const sig = getSignatureFromTransaction(signedTransaction);
   
@@ -194,4 +226,47 @@ export const getSwapInstructions = async (
   return await response.json();
 };
 
+export const simulateSwap = async (
+  walletSigner: KeyPairSigner,
+  swapInstructionResponse: Partial<SwapInstructionsResponse> & Required<Pick<SwapInstructionsResponse, 'swapInstruction' | 'addressLookupTableAddresses'>>
+) => {
+  const client = await createClient();
 
+  const signedTransaction = await getSignedSwapTransaction(client, walletSigner, swapInstructionResponse);
+  
+  const b64Txn = getBase64EncodedWireTransaction(signedTransaction);
+
+  return client.rpc.simulateTransaction(b64Txn, {
+    encoding: 'base64'
+  }).send();
+}
+
+export const getTokenBalance = async (
+  client: Client,
+  walletAddress: string,
+  tokenMint: string
+): Promise<bigint> => {
+
+
+  try {
+    const [ata] = await findAssociatedTokenPda({
+      mint: address(tokenMint),
+      owner: address(walletAddress),
+      tokenProgram: TOKEN_2022_PROGRAM_ADDRESS
+    });
+
+    const accountBal = await client.rpc.getTokenAccountBalance(ata).send();
+    if (!accountBal.value) {
+      return 0n; // Account doesn't exist, so balance is 0
+    }
+
+    return BigInt(accountBal.value.amount);
+  } catch (e) {
+    if (e instanceof Error) {
+      throw e;
+    } else {
+      
+      return 0n;
+    }
+  }
+};
