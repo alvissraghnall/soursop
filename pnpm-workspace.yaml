@@ -2,4 +2,5 @@ onlyBuiltDependencies:
   - bigint-buffer
   - bufferutil
   - mongodb-memory-server
+  - puppeteer
   - utf-8-validate
