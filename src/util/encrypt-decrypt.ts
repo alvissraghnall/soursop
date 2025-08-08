@@ -1,7 +1,7 @@
-import crypto from 'crypto';
-import { getRequiredEnv } from './env-helper';
+import crypto from "crypto";
+import { getRequiredEnv } from "./env-helper";
 
-const algorithm = 'aes-256-gcm';
+const algorithm = "aes-256-gcm";
 const password = getRequiredEnv("PASSWORD");
 
 const SALT_LEN = 16;
@@ -19,8 +19,8 @@ export function encrypt(plaintext: string, password: string): Promise<Buffer> {
 
       const cipher = crypto.createCipheriv(algorithm, key, iv);
       const ciphertext = Buffer.concat([
-        cipher.update(plaintext, 'utf8'),
-        cipher.final()
+        cipher.update(plaintext, "utf8"),
+        cipher.final(),
       ]);
       const authTag = cipher.getAuthTag();
 
@@ -30,10 +30,16 @@ export function encrypt(plaintext: string, password: string): Promise<Buffer> {
   });
 }
 
-export function decrypt(encryptedBuffer: Buffer, password: string): Promise<string> {
+export function decrypt(
+  encryptedBuffer: Buffer,
+  password: string,
+): Promise<string> {
   const salt = encryptedBuffer.subarray(0, SALT_LEN);
   const iv = encryptedBuffer.subarray(SALT_LEN, SALT_LEN + IV_LEN);
-  const authTag = encryptedBuffer.subarray(SALT_LEN + IV_LEN, SALT_LEN + IV_LEN + AUTH_TAG_LEN);
+  const authTag = encryptedBuffer.subarray(
+    SALT_LEN + IV_LEN,
+    SALT_LEN + IV_LEN + AUTH_TAG_LEN,
+  );
   const ciphertext = encryptedBuffer.subarray(SALT_LEN + IV_LEN + AUTH_TAG_LEN);
 
   return new Promise((resolve, reject) => {
@@ -45,7 +51,7 @@ export function decrypt(encryptedBuffer: Buffer, password: string): Promise<stri
         decipher.setAuthTag(authTag);
         const decrypted = Buffer.concat([
           decipher.update(ciphertext),
-          decipher.final()
+          decipher.final(),
         ]);
         resolve(decrypted.toString());
       } catch (e) {
@@ -54,4 +60,3 @@ export function decrypt(encryptedBuffer: Buffer, password: string): Promise<stri
     });
   });
 }
-

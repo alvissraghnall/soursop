@@ -1,5 +1,5 @@
-import { AccountRole, type Instruction } from '@solana/instructions';
-import { address } from '@solana/kit';
+import { AccountRole, type Instruction } from "@solana/instructions";
+import { address } from "@solana/kit";
 
 export function convertJupiterInstructionToKit(jupiterInstruction: {
   programId: string;
@@ -10,11 +10,11 @@ export function convertJupiterInstructionToKit(jupiterInstruction: {
   }[];
   data: string;
 }): Instruction {
-  const data = jupiterInstruction.data 
-    ? Uint8Array.from(Buffer.from(jupiterInstruction.data, 'base64'))
+  const data = jupiterInstruction.data
+    ? Uint8Array.from(Buffer.from(jupiterInstruction.data, "base64"))
     : undefined;
 
-  const accounts = jupiterInstruction.accounts.map(account =>
+  const accounts = jupiterInstruction.accounts.map((account) =>
     Object.freeze({
       address: address(account.pubkey),
       role: determineRole(account.isSigner, account.isWritable),

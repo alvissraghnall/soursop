@@ -1,4 +1,4 @@
-const { createDefaultPreset } = require('ts-jest');
+const { createDefaultPreset } = require("ts-jest");
 
 const tsJestPreset = createDefaultPreset();
 
@@ -7,5 +7,5 @@ module.exports = {
   transform: {
     ...tsJestPreset.transform,
   },
-  testEnvironment: 'node',
+  testEnvironment: "node",
 };
