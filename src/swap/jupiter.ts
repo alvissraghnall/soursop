@@ -44,6 +44,10 @@ import { convertJupiterInstructionToKit } from "../util/convert-jup-instruction-
 import { findAssociatedTokenPda } from "@solana-program/token";
 import { borshDeserialize, BorshSchema } from "borsher";
 
+function sanitizeString(str: string): string {
+  return str.replace(/\0/g, "").trim();
+}
+
 export const getTokenInfo = async (tokenMint: string) => {
   const client = await createClient();
 
@@ -88,9 +92,10 @@ export const getTokenMetadata = async (tokenMint: string) => {
 
   if (account.exists) {
     const decoded = borshDeserialize(schema, account.data.slice(65, 319));
-    tokenName = decoded.name;
-    tokenSymbol = decoded.symbol;
-    tokenURI = decoded.uri;
+
+    tokenName = sanitizeString(decoded.name);
+    tokenSymbol = sanitizeString(decoded.symbol);
+    tokenURI = sanitizeString(decoded.uri);
 
     try {
       const response = await fetch(tokenURI);
@@ -132,9 +137,29 @@ export interface QuoteResponse {
     feeBps: number;
   };
   priceImpactPct: string;
-  routePlan: any[];
+  routePlan: Array<{
+    swapInfo: {
+      ammKey: string;
+      label: string;
+      inputMint: string;
+      outputMint: string;
+      inAmount: string;
+      outAmount: string;
+      feeAmount: string;
+      feeMint: string;
+    };
+    percent: number;
+  }>;
   contextSlot: number;
   timeTaken: number;
+}
+
+interface QuoteRequest {
+  inputMint?: string;
+  outputMint: string;
+  amount: bigint;
+  direction: "buy" | "sell";
+  slippageBps?: number;
 }
 
 interface JupiterInstructionSet {
@@ -169,7 +194,7 @@ export const getJupiterQuote = async (
   inputMint: string,
   outputMint: string,
   humanAmount: number,
-  slippageBps: number,
+  slippageBps: number = 300,
 ): Promise<QuoteResponse> => {
   const inputDecimals = await getDecimals(inputMint);
 

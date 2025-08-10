@@ -22,6 +22,9 @@ class Wallet {
   @prop()
   encryptedMnemonic?: string;
 
+  @prop({ default: false })
+  default!: boolean;
+
   @prop({ default: Date.now })
   createdAt?: Date;
 
@@ -42,7 +45,15 @@ class Wallet {
     },
   ) {
     try {
-      const wallet = new this(data);
+      const existingWallets = await this.find({ userId: data.userId });
+
+      const isDefault = existingWallets.length === 0;
+
+      const wallet = new this({
+        ...data,
+        default: isDefault,
+      });
+
       return await wallet.save();
     } catch (error) {
       console.log(typeof error);
@@ -55,6 +66,37 @@ class Wallet {
       }
 
       throw error;
+    }
+  }
+
+  static async setDefaultWallet(
+    this: ReturnModelType<typeof Wallet>,
+    userId: number,
+    walletId: string | mongoose.Types.ObjectId,
+  ) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      await this.updateMany(
+        { userId },
+        { $set: { default: false } },
+        { session },
+      );
+
+      const updatedWallet = await this.findByIdAndUpdate(
+        walletId,
+        { $set: { default: true } },
+        { new: true, session },
+      );
+
+      await session.commitTransaction();
+      return updatedWallet;
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
     }
   }
 }

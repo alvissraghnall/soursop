@@ -85,14 +85,14 @@ describe("Encryption/Decryption Module", () => {
       const encrypted = await encrypt(testPlaintext, testPassword);
       const decrypted = await decrypt(encrypted, testPassword);
 
-      expect(decrypted).toBe(testPlaintext);
+      expect(decrypted.toString()).toBe(testPlaintext);
     });
 
     it("should handle empty string encryption/decryption", async () => {
       const encrypted = await encrypt("", testPassword);
       const decrypted = await decrypt(encrypted, testPassword);
 
-      expect(decrypted).toBe("");
+      expect(decrypted.toString()).toBe("");
     });
 
     it("should handle unicode characters", async () => {
@@ -100,7 +100,7 @@ describe("Encryption/Decryption Module", () => {
       const encrypted = await encrypt(unicodeText, testPassword);
       const decrypted = await decrypt(encrypted, testPassword);
 
-      expect(decrypted).toBe(unicodeText);
+      expect(decrypted.toString()).toBe(unicodeText);
     });
 
     it("should handle long strings", async () => {
@@ -108,7 +108,7 @@ describe("Encryption/Decryption Module", () => {
       const encrypted = await encrypt(longText, testPassword);
       const decrypted = await decrypt(encrypted, testPassword);
 
-      expect(decrypted).toBe(longText);
+      expect(decrypted.toString()).toBe(longText);
     });
 
     it("should fail with wrong password", async () => {
@@ -222,7 +222,7 @@ describe("Encryption/Decryption Module", () => {
         const encrypted = await encrypt(testCase, testPassword);
         const decrypted = await decrypt(encrypted, testPassword);
 
-        expect(decrypted).toBe(testCase);
+        expect(decrypted.toString()).toBe(testCase);
       });
     });
   });
@@ -233,7 +233,7 @@ describe("Encryption/Decryption Module", () => {
       const encrypted = await encrypt(testPlaintext, shortPassword);
       const decrypted = await decrypt(encrypted, shortPassword);
 
-      expect(decrypted).toBe(testPlaintext);
+      expect(decrypted.toString()).toBe(testPlaintext);
     });
 
     it("should handle very long passwords", async () => {
@@ -241,7 +241,7 @@ describe("Encryption/Decryption Module", () => {
       const encrypted = await encrypt(testPlaintext, longPassword);
       const decrypted = await decrypt(encrypted, longPassword);
 
-      expect(decrypted).toBe(testPlaintext);
+      expect(decrypted.toString()).toBe(testPlaintext);
     });
 
     it("should handle password with special characters", async () => {
@@ -249,7 +249,7 @@ describe("Encryption/Decryption Module", () => {
       const encrypted = await encrypt(testPlaintext, specialPassword);
       const decrypted = await decrypt(encrypted, specialPassword);
 
-      expect(decrypted).toBe(testPlaintext);
+      expect(decrypted.toString()).toBe(testPlaintext);
     });
   });
 
@@ -262,7 +262,7 @@ describe("Encryption/Decryption Module", () => {
 
       const duration = Date.now() - start;
 
-      expect(decrypted).toBe(testPlaintext);
+      expect(decrypted.toString()).toBe(testPlaintext);
       expect(duration).toBeLessThan(1000);
     });
   });

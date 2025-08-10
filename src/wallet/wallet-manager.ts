@@ -2,7 +2,7 @@ import * as bip39 from "bip39";
 import { derivePath } from "ed25519-hd-key";
 import bs58 from "bs58";
 import { WalletModel } from "./model";
-import { encrypt } from "../util/encrypt-decrypt";
+import { decrypt, encrypt } from "../util/encrypt-decrypt";
 import { PASSWORD } from "../util/constants";
 import { Types } from "mongoose";
 import { Client, createClient } from "../client";
@@ -22,6 +22,8 @@ export interface WalletInfo {
   privateKey: CryptoKey;
   mnemonic?: string;
   balance?: number;
+  default?: boolean;
+  address?: string;
 }
 
 export class WalletManager {
@@ -214,7 +216,57 @@ export class WalletManager {
   }
 
   async retrieve(userId: number) {
-    return WalletModel.findByUserId(userId);
+    return WalletModel.find({ userId }).sort({ default: -1 }).limit(100).exec(); // -1 for descending (default first)
+  }
+
+  async reconstructWalletInfo(
+    walletFromDb:
+      | Awaited<ReturnType<WalletManager["retrieve"]>>[number]
+      | Awaited<ReturnType<(typeof WalletModel)["findOne"]>>,
+  ): Promise<WalletInfo> {
+    const privKeyB58 = (
+      await decrypt(
+        Buffer.from(walletFromDb.encryptedPrivateKey, "base64"),
+        PASSWORD,
+      )
+    ).toString();
+
+    const walletAsCryptoKeys = await this.importFromPrivateKey(privKeyB58);
+
+    let mnemonic: string | undefined = undefined;
+    if (walletFromDb.encryptedMnemonic) {
+      mnemonic = (
+        await decrypt(
+          Buffer.from(walletFromDb.encryptedMnemonic, "base64"),
+          PASSWORD,
+        )
+      ).toString();
+    }
+
+    const walletInfo: WalletInfo = {
+      mnemonic,
+      address: walletFromDb.address,
+      default: walletFromDb.default || false,
+      ...walletAsCryptoKeys,
+    };
+
+    return walletInfo;
+  }
+
+  async retrieveAndConstruct(userId: number): Promise<WalletInfo[]> {
+    const walletsFromDb = await this.retrieve(userId);
+
+    const reconstructedWallets = await Promise.all(
+      walletsFromDb.map((wallet) => this.reconstructWalletInfo(wallet)),
+    );
+
+    return reconstructedWallets;
+  }
+
+  async retrieveAndConstructDefault(userId: number): Promise<WalletInfo> {
+    const walletFromDb = await WalletModel.findOne({ default: true }).exec();
+
+    return this.reconstructWalletInfo(walletFromDb);
   }
 
   async importEd25519PrivateKey(rawPrivateKey: number[]): Promise<CryptoKey> {

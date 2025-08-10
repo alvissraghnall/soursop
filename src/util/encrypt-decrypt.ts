@@ -33,7 +33,7 @@ export function encrypt(plaintext: string, password: string): Promise<Buffer> {
 export function decrypt(
   encryptedBuffer: Buffer,
   password: string,
-): Promise<string> {
+): Promise<Buffer> {
   const salt = encryptedBuffer.subarray(0, SALT_LEN);
   const iv = encryptedBuffer.subarray(SALT_LEN, SALT_LEN + IV_LEN);
   const authTag = encryptedBuffer.subarray(
@@ -53,7 +53,7 @@ export function decrypt(
           decipher.update(ciphertext),
           decipher.final(),
         ]);
-        resolve(decrypted.toString());
+        resolve(decrypted);
       } catch (e) {
         reject(e);
       }
