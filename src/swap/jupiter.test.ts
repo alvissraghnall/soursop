@@ -4,7 +4,6 @@ import {
   getDecimals,
   getJupiterQuote,
   getSwapInstructions,
-  QuoteResponse,
   SwapInstructionsResponse,
   simulateSwap,
 } from "./jupiter";
@@ -14,6 +13,7 @@ import { address, generateKeyPair } from "@solana/kit";
 import { FetchError } from "../errors/fetch.error";
 import { generateKeyPairSigner } from "@solana/kit";
 
+import { JupiterQuote, QuoteResponse } from "./jupiter-quote";
 import {
   appendTransactionMessageInstructions,
   compileTransaction,

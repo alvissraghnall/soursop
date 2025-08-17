@@ -9,6 +9,8 @@ import {
   sendHelpMessage,
   sendWelcomeMessage,
 } from "./commands/wallet";
+import { connectKafka } from "./kafka";
+import { startBackgroundFetcher } from "./util/price-fetcher";
 
 const bot = new Telegraf(getRequiredEnv("BOT_TOKEN"));
 
@@ -30,7 +32,14 @@ bot.command("import", (ctx) => {
   );
 });
 
-bot.launch();
+async function start() {
+  await connectKafka();
+  startBackgroundFetcher();
+  bot.launch();
+  console.log("All services running");
+}
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
+
+start().catch(console.error);

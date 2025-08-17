@@ -5,18 +5,14 @@ import {
   address,
   appendTransactionMessageInstructions,
   Base64EncodedBytes,
-  compileTransaction,
   compressTransactionMessageUsingAddressLookupTables,
   createSignerFromKeyPair,
-  createSolanaRpc,
-  createSolanaRpcSubscriptionsFromTransport,
   createTransactionMessage,
   fetchAddressesForLookupTables,
   fetchEncodedAccount,
   getAddressDecoder,
   getAddressEncoder,
   getBase64EncodedWireTransaction,
-  getComputeUnitEstimateForTransactionMessageFactory,
   getProgramDerivedAddress,
   getSignatureFromTransaction,
   Instruction,
@@ -27,14 +23,11 @@ import {
   setTransactionMessageLifetimeUsingBlockhash,
   signTransaction,
   signTransactionMessageWithSigners,
-  SOLANA_ERROR__TRANSACTION_ERROR__BLOCKHASH_NOT_FOUND,
   Transaction,
   TransactionWithBlockhashLifetime,
 } from "@solana/kit";
 import {
   fetchMint,
-  getInitializeScaledUiAmountMintScaledUiAmountMintDiscriminatorBytes,
-  getUpdateMultiplierScaledUiMintInstruction,
   TOKEN_2022_PROGRAM_ADDRESS,
 } from "@solana-program/token-2022";
 import { Client, createClient } from "../client";
@@ -43,6 +36,8 @@ import { FetchError } from "../errors/fetch.error";
 import { convertJupiterInstructionToKit } from "../util/convert-jup-instruction-to-kit";
 import { findAssociatedTokenPda } from "@solana-program/token";
 import { borshDeserialize, BorshSchema } from "borsher";
+import { JupiterQuote, QuoteResponse } from "./jupiter-quote";
+import { SOL_MINT } from "../util/constants";
 
 function sanitizeString(str: string): string {
   return str.replace(/\0/g, "").trim();
@@ -124,40 +119,10 @@ export const getDecimals = async (tokenMint: string) => {
 // const JUPITER_API_URL = 'https://quote-api.jup.ag/v6';
 const JUPITER_API_URL = "https://lite-api.jup.ag/swap/v1";
 
-export interface QuoteResponse {
-  inputMint: string;
-  inAmount: string;
-  outputMint: string;
-  outAmount: string;
-  otherAmountThreshold: string;
-  swapMode: string;
-  slippageBps: number;
-  platformFee: {
-    amount: string;
-    feeBps: number;
-  };
-  priceImpactPct: string;
-  routePlan: Array<{
-    swapInfo: {
-      ammKey: string;
-      label: string;
-      inputMint: string;
-      outputMint: string;
-      inAmount: string;
-      outAmount: string;
-      feeAmount: string;
-      feeMint: string;
-    };
-    percent: number;
-  }>;
-  contextSlot: number;
-  timeTaken: number;
-}
-
 interface QuoteRequest {
   inputMint?: string;
   outputMint: string;
-  amount: bigint;
+  amount: number;
   direction: "buy" | "sell";
   slippageBps?: number;
 }
@@ -213,6 +178,68 @@ export const getJupiterQuote = async (
   }
   return response.json();
 };
+
+export async function getQuote(params: QuoteRequest): Promise<JupiterQuote> {
+  const {
+    inputMint = SOL_MINT,
+    outputMint,
+    amount,
+    direction,
+    slippageBps = 300,
+  } = params;
+
+  try {
+    if (!outputMint) {
+      throw new Error("Output mint is required");
+    }
+
+    if (amount <= 0n) {
+      throw new Error("Amount must be greater than 0");
+    }
+
+    const inputDecimals = await getDecimals(inputMint);
+
+    const quoteResponse = await getJupiterQuote(
+      inputMint,
+      outputMint,
+      amount,
+      slippageBps,
+    );
+
+    return new JupiterQuote(quoteResponse);
+  } catch (error) {
+    console.error("Error getting quote:", error);
+    throw error instanceof Error ? error : new Error("Unknown error occurred");
+  }
+}
+
+export async function getBuyQuote(
+  tokenMint: string,
+  solAmount: number,
+  slippageBps: number = 300,
+): Promise<JupiterQuote> {
+  return getQuote({
+    inputMint: SOL_MINT,
+    outputMint: tokenMint,
+    amount: solAmount,
+    direction: "buy",
+    slippageBps,
+  });
+}
+
+export async function getSellQuote(
+  tokenMint: string,
+  tokenAmount: number,
+  slippageBps: number = 300,
+): Promise<JupiterQuote> {
+  return getQuote({
+    inputMint: tokenMint,
+    outputMint: SOL_MINT,
+    amount: tokenAmount,
+    direction: "sell",
+    slippageBps,
+  });
+}
 
 /**
 export const getSwapTransaction = async (
@@ -364,23 +391,30 @@ export const getSwapInstructions = async (
   quoteResponse: QuoteResponse,
   userPublicKey: string,
 ) => {
-  const response = await fetch(`${JUPITER_API_URL}/swap-instructions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      quoteResponse,
-      userPublicKey,
-      wrapAndUnwrapSol: true,
-    }),
-  });
+  try {
+    const response = await fetch(`${JUPITER_API_URL}/swap-instructions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        quoteResponse,
+        userPublicKey,
+        wrapAndUnwrapSol: true,
+      }),
+    });
 
-  if (!response.ok) {
-    throw new FetchError(
-      `Failed to get swap instructions: ${await response.text()}`,
+    if (!response.ok) {
+      throw new FetchError(
+        `Failed to get swap instructions: ${await response.text()}`,
+      );
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Error getting swap instructions:", error);
+    throw new Error(
+      `Failed to get swap instructions: ${error instanceof Error ? error.message : "Unknown error"}`,
     );
   }
-
-  return await response.json();
 };
 
 export const simulateSwap = async (

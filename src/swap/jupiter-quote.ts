@@ -1,4 +1,34 @@
-class JupiterQuote {
+export interface QuoteResponse {
+  inputMint: string;
+  inAmount: string;
+  outputMint: string;
+  outAmount: string;
+  otherAmountThreshold: string;
+  swapMode: string;
+  slippageBps: number;
+  platformFee: {
+    amount: string;
+    feeBps: number;
+  };
+  priceImpactPct: string;
+  routePlan: Array<{
+    swapInfo: {
+      ammKey: string;
+      label: string;
+      inputMint: string;
+      outputMint: string;
+      inAmount: string;
+      outAmount: string;
+      feeAmount: string;
+      feeMint: string;
+    };
+    percent: number;
+  }>;
+  contextSlot: number;
+  timeTaken: number;
+}
+
+export class JupiterQuote {
   constructor(private quoteResponse: QuoteResponse) {}
 
   get inputAmount(): bigint {
@@ -23,41 +53,5 @@ class JupiterQuote {
 
   get rawQuote(): QuoteResponse {
     return this.quoteResponse;
-  }
-
-  /**
-   * Get swap instructions from the quote
-   */
-  async getSwapInstructions(userPublicKey?: string): Promise<SwapInstructions> {
-    try {
-      const response = await fetch(`${JUPITER_API_URL}/swap`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          quoteResponse: this.quoteResponse,
-          userPublicKey: userPublicKey || "",
-          wrapAndUnwrapSol: true,
-          useSharedAccounts: true,
-          feeAccount: undefined,
-          computeUnitPriceMicroLamports: "auto",
-          prioritizationFeeLamports: "auto",
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to get swap instructions: ${await response.text()}`,
-        );
-      }
-
-      return response.json();
-    } catch (error) {
-      console.error("Error getting swap instructions:", error);
-      throw new Error(
-        `Failed to get swap instructions: ${error instanceof Error ? error.message : "Unknown error"}`,
-      );
-    }
   }
 }
