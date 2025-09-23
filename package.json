@@ -8,6 +8,7 @@
     "test:coverage": "pnpm exec dotenvx run -- jest --coverage",
     "test:coverage:ci": "pnpm exec dotenvx run -f .env.ci -- jest --coverage",
     "dev": "pnpm exec dotenvx run -- ts-node src/index.ts",
+    "format": "pnpm exec prettier -w .",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -28,7 +29,9 @@
     "@solana/kit": "^2.3.0",
     "@solana/spl-token": "^0.4.13",
     "@solana/web3.js": "^1.98.2",
+    "@telegraf/session": "2.0.0-beta.7",
     "@typegoose/typegoose": "^12.17.0",
+    "axios": "^1.12.2",
     "bip39": "^3.1.0",
     "borsh": "^2.0.0",
     "borsher": "^4.0.0",
@@ -48,13 +51,13 @@
   },
   "devDependencies": {
     "@dotenvx/dotenvx": "^1.48.3",
-    "@types/bip39": "^3.0.4",
     "@types/jest": "^30.0.0",
     "husky": "9.1.7",
     "jest": "^30.0.4",
     "lint-staged": "16.1.4",
     "mongodb-memory-server": "^10.1.4",
     "prettier": "3.6.2",
+    "ts-create-index": "^3.0.10",
     "ts-jest": "^29.4.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"

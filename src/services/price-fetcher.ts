@@ -1,39 +1,50 @@
 import { producer } from "../kafka";
-import { cachePrice } from "../redis";
-import fetch from "cross-fetch";
+import { cachePrice, getCachedPrice } from "../redis";
+import axios from "axios";
 
-const PAIRS = ["sol-usd", "bonk-usd"];
+const PAIRS = ["solana-usd", "bonk-usd"];
+
+let isFetching = false;
 
 export async function fetchAllPrices() {
+  if (isFetching) return;
+
+  isFetching = true;
   try {
-    const coins = PAIRS.map((p) => p.split("-")[0]).join(",");
-    const vsCurrencies = [...new Set(PAIRS.map((p) => p.split("-")[1]))].join(
-      ",",
-    );
+    const coins = PAIRS.map((p) => p.split("-")[0]);
+    const vsCurrencies = [...new Set(PAIRS.map((p) => p.split("-")[1]))];
 
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coins}&vs_currencies=${vsCurrencies}`;
-    const res = await fetch(url);
-    const data = await res.json();
+    const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coins.join(",")}&vs_currencies=${vsCurrencies.join(",")}`;
+    const res = await axios.get(url, { timeout: 5000 });
 
-    // Cache each pair
     for (const pair of PAIRS) {
       const [coin, vs] = pair.split("-");
-      const price = data[coin][vs];
-      await cachePrice(pair, price);
+      const price = res.data[coin]?.[vs];
 
-      // Publish to Kafka
-      await producer.send({
-        topic: "price-updates",
-        messages: [{ value: JSON.stringify({ pair, price }) }],
-      });
+      if (price) {
+        await cachePrice(pair, price);
+
+        await producer.send({
+          topic: "price-updates",
+          messages: [
+            { value: JSON.stringify({ pair, price, timestamp: Date.now() }) },
+          ],
+        });
+      }
     }
+
+    console.log(`✅ Prices updated at ${new Date().toISOString()}`);
   } catch (error) {
-    console.error("Background fetch error:", error);
+    if (error instanceof Error)
+      console.error("❌ Price fetch failed:", error.message);
+  } finally {
+    isFetching = false;
   }
 }
 
 export function startBackgroundFetcher() {
-  setInterval(fetchAllPrices, 2900);
-  fetchAllPrices(); // Initial fetch
-  console.log("Background price fetcher started");
+  fetchAllPrices();
+
+  setInterval(fetchAllPrices, 19000);
+  console.log("🔄 Background price fetcher started");
 }

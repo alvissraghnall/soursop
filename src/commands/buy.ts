@@ -1,28 +1,27 @@
 import { Scenes, Telegraf } from "telegraf";
-import { getTokenInfo, getTokenMetadata } from "../swap/jupiter";
+import {
+  getBuyQuote,
+  getQuote,
+  getTokenInfo,
+  getTokenMetadata,
+} from "../swap/jupiter";
 import { WalletInfo, WalletManager } from "../wallet/wallet-manager";
-import { getJupiterQuote, executeSwap } from "../swap/jupiter";
-import { Message } from "telegraf/typings/core/types/typegram";
+import {
+  getJupiterQuote,
+  executeSwap,
+  getSwapInstructions,
+} from "../swap/jupiter";
+import { Message, CallbackQuery } from "telegraf/typings/core/types/typegram";
 
 const { enter, leave } = Scenes.Stage;
 
-interface BuySession extends Scenes.WizardSessionData {
+export interface BuyState extends Scenes.WizardSessionData {
   tokenAddress?: string;
-  amount?: bigint;
-  wallet: WalletInfo;
+  amount?: number;
   tokenMetadata?: { name: string; symbol: string; decimals: number };
 }
 
-interface BuyWizardSession extends Scenes.WizardSession<BuySession> {
-  tokenAddress?: string;
-  amount?: bigint;
-  wallet: WalletInfo;
-  tokenMetadata?: { name: string; symbol: string; decimals: number };
-}
-
-type BuyContext = Scenes.WizardContext<BuySession> & {
-  session: BuyWizardSession;
-};
+export type BuyContext = Scenes.WizardContext<BuyState>;
 
 const buyWizard = new Scenes.WizardScene<BuyContext>(
   "BUY_WIZARD",
@@ -52,8 +51,10 @@ const buyWizard = new Scenes.WizardScene<BuyContext>(
         return ctx.reply("❌ No token found for address provided.");
       }
 
-      ctx.session.tokenAddress = tokenAddress;
-      ctx.session.tokenMetadata = {
+      // Explicitly type the state
+      const state = ctx.wizard.state as BuyState;
+      state.tokenAddress = tokenAddress;
+      state.tokenMetadata = {
         name: metadata.name,
         symbol: metadata.symbol,
         decimals: tokenInfo.decimals,
@@ -85,13 +86,15 @@ const buyWizard = new Scenes.WizardScene<BuyContext>(
       );
     }
 
-    const { tokenMetadata } = ctx.session;
+    // Explicitly type the state
+    const state = ctx.wizard.state as BuyState;
+    const { tokenMetadata } = state;
     if (!tokenMetadata) {
       return ctx.reply("❌ Token information not found. Please start over.");
     }
 
-    const amountRaw = BigInt(Math.floor(amount * 10 ** tokenMetadata.decimals));
-    ctx.session.amount = amountRaw;
+    // const amountRaw = BigInt(Math.floor(amount * 10 ** tokenMetadata.decimals));
+    state.amount = amount;
 
     const userId = ctx.message?.from.id;
 
@@ -116,68 +119,91 @@ const buyWizard = new Scenes.WizardScene<BuyContext>(
       }
 
       await ctx.reply(
-        `🛒 You are about to buy *${amount} ${tokenMetadata.symbol}*.\nEstimated fee: 0.002 SOL.\nType "yes" to confirm or "cancel" to abort.`,
-        { parse_mode: "Markdown" },
+        `🛒 You are about to buy *${amount} ${tokenMetadata.symbol}*.\nEstimated fee: 0.002 SOL.`,
+        {
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                { text: "✅ Confirm", callback_data: "buy_confirm" },
+                { text: "❌ Cancel", callback_data: "buy_cancel" },
+              ],
+            ],
+          },
+        },
       );
+
       return ctx.wizard.next();
     } catch (error) {
       console.error("Error checking balance:", error);
       return ctx.reply("❌ Error checking wallet balance. Please try again.");
     }
   },
+
   async (ctx) => {
-    const message = ctx.message as Message.TextMessage;
-    const input = message?.text?.toLowerCase().trim();
-    const userId = ctx.message?.from.id;
+    if ("callback_query" in ctx.update) {
+      const callbackQuery = ctx.update.callback_query;
 
-    if (!userId)
-      return ctx.reply(
-        "No associated user wallet found! Please generate or import a wallet to continue.",
-      );
+      if (callbackQuery && "data" in callbackQuery) {
+        const callbackData = callbackQuery.data;
 
-    let walletManager = new WalletManager();
-    let defaultWallet = await walletManager.retrieveAndConstructDefault(userId);
+        await ctx.answerCbQuery();
 
-    if (!input) {
-      return ctx.reply('Please type "yes" to confirm or "cancel" to abort.');
+        const userId = ctx.update.callback_query.from.id;
+
+        if (!userId) {
+          return ctx.reply("No associated user wallet found!");
+        }
+
+        let walletManager = new WalletManager();
+        let defaultWallet =
+          await walletManager.retrieveAndConstructDefault(userId);
+
+        if (callbackData === "buy_cancel") {
+          await ctx.reply("❎ Buy cancelled.");
+          return ctx.scene.leave();
+        }
+
+        if (callbackData === "buy_confirm") {
+          const state = ctx.wizard.state as BuyState;
+          const { tokenAddress, amount, tokenMetadata } = state;
+
+          if (
+            !tokenAddress ||
+            !amount ||
+            !tokenMetadata ||
+            !defaultWallet.address
+          ) {
+            await ctx.reply(
+              "❌ Missing transaction information. Please start over.",
+            );
+            return ctx.scene.leave();
+          }
+
+          try {
+            const quote = await getBuyQuote(tokenAddress, amount);
+            const swapInstructions = await getSwapInstructions(
+              quote.rawQuote,
+              defaultWallet.address,
+            );
+            const txSig = await executeSwap(defaultWallet, swapInstructions);
+
+            await ctx.reply(`✅ Swap completed!\n🔗 Transaction: ${txSig}`);
+          } catch (err) {
+            console.error("Swap error:", err);
+            await ctx.reply(
+              `⚠️ Error during swap: ${err instanceof Error ? err.message : "Unknown error"}`,
+            );
+          }
+
+          return ctx.scene.leave();
+        }
+      } else {
+        await ctx.reply("❌ Unexpected callback query type.");
+      }
+    } else {
+      await ctx.reply("❌ Please use the buttons to confirm or cancel.");
     }
-
-    if (input === "cancel") {
-      await ctx.reply("❎ Buy cancelled.");
-      return ctx.scene.leave();
-    }
-
-    if (input !== "yes") {
-      return ctx.reply('Please type "yes" to confirm or "cancel" to abort.');
-    }
-
-    const { tokenAddress, amount, tokenMetadata } = ctx.session;
-
-    if (!tokenAddress || !amount || !tokenMetadata) {
-      await ctx.reply("❌ Missing transaction information. Please start over.");
-      return ctx.scene.leave();
-    }
-
-    try {
-      const quote = await getQuote({
-        outputMint: tokenAddress,
-        amount,
-        direction: "buy",
-      });
-
-      const swapInstructions = await quote.getSwapInstructions();
-
-      const txSig = await executeSwap(defaultWallet, swapInstructions);
-
-      await ctx.reply(`✅ Swap completed!\n🔗 Transaction: ${txSig}`);
-    } catch (err) {
-      console.error("Swap error:", err);
-      await ctx.reply(
-        `⚠️ Error during swap: ${err instanceof Error ? err.message : "Unknown error"}`,
-      );
-    }
-
-    return ctx.scene.leave();
   },
 );
 

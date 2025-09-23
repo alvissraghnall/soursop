@@ -196,7 +196,10 @@ export class WalletManager {
     return createKeyPairFromPrivateKeyBytes(derivedSeed, true);
   }
 
-  async store(wallet: WalletInfo, userId: number): Promise<Types.ObjectId> {
+  async store(
+    wallet: WalletInfo,
+    userId: number,
+  ): Promise<ReturnType<(typeof WalletModel)["createAndSave"]>> {
     const [privateKey, publicKey] = await this.exportKeyPair(wallet);
     const secretKey = (await encrypt(privateKey, PASSWORD)).toString("base64");
     const encryptedMnemonic =
@@ -212,7 +215,9 @@ export class WalletManager {
       encryptedMnemonic,
     });
 
-    return newWallet._id;
+    if (!newWallet) throw new Error("Wallet store failed!");
+
+    return newWallet;
   }
 
   async retrieve(userId: number) {

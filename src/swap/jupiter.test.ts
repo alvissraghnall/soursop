@@ -400,8 +400,14 @@ describe("jupiter", () => {
 
     it("should handle missing optional instructions", async () => {
       const minimalSwapInstructions: Partial<SwapInstructionsResponse> &
-        Required<Pick<SwapInstructionsResponse, "swapInstruction">> = {
+        Required<
+          Pick<
+            SwapInstructionsResponse,
+            "swapInstruction" | "addressLookupTableAddresses"
+          >
+        > = {
         swapInstruction: mockJupiterInstruction,
+        addressLookupTableAddresses: [],
       };
 
       await executeSwap(mockWallet, minimalSwapInstructions);

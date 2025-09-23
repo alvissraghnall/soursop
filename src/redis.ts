@@ -1,9 +1,9 @@
 import { createClient } from "redis";
 
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-const redis = createClient({ url: redisUrl });
+export const redis = createClient({ url: redisUrl });
 
-redis.connect().catch(console.error);
+//redis.connect().catch(console.error);
 
 export async function cachePrice(pair: string, price: number, ttl = 60) {
   await redis.set(`price:${pair}`, price.toString(), {

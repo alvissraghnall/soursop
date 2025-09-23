@@ -2,43 +2,22 @@ import { Context } from "telegraf";
 import { WalletManager } from "../wallet/wallet-manager";
 import { UserStates } from "../util/constants";
 
-export function sendWelcomeMessage(ctx: Context) {
-  return ctx.reply(`
-🚀 Welcome to SourSop — The No-Fee SOL Trading Bot!
-
-Trade Solana (SOL) seamlessly, instantly, and 100% fee-free.
-No middlemen. No hidden charges. Just pure trading, swapping and more at lightning speed.
-
-🔐 Secure | ⚡ Fast | 💸 Zero Fees
-
-Type /help to begin trading or explore available commands.
-  `);
-}
-
-export function sendHelpMessage(ctx: Context) {
-  return ctx.reply(
-    "📖 Solana Wallet Manager Commands:\n\n" +
-      "🆕 /generate - Generate a new Solana wallet\n" +
-      "🔑 /import - Import wallet using private key or mnemonic\n" +
-      "💰 /balance - Check balance of your wallets\n" +
-      "👛 /wallets - View all your stored wallets\n" +
-      "⚙️ /settings - Bot settings\n" +
-      "❓ /help - Show this help message",
-  );
-}
-
 export async function handleGenerateCommand(ctx: Context) {
   try {
     const walletManager = new WalletManager();
     const wallet = await walletManager.generateWallet();
 
-    const walletId =
+    const storedWallet =
       ctx.from?.id && (await walletManager.store(wallet, ctx.from?.id));
+
+    if (!storedWallet) throw new Error("Wallet store failed!");
+
+    const walletId = storedWallet.id;
 
     await ctx.reply(
       "✅ New wallet generated successfully!\n\n" +
-        `🏦 Address: \`${wallet.publicKey}\`\n` +
-        `🔐 Private Key: \`${wallet.privateKey}\`\n\n` +
+        `🏦 Address: \`${storedWallet.address}\`\n` +
+        //`🔐 Private Key: \`${wallet.privateKey}\`\n\n` +
         "⚠️ IMPORTANT: Save your mnemonic phrase securely!",
       { parse_mode: "Markdown" },
     );
