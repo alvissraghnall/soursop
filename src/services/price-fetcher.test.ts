@@ -17,6 +17,14 @@ jest.mock("../kafka", () => ({
 jest.mock("../redis", () => ({
   cachePrice: jest.fn(),
 }));
+jest.mock("../util/logger", () => ({
+  logger: {
+    info: jest.fn(),
+    error: jest.fn(),
+    warn: jest.fn(),
+    debug: jest.fn(),
+  },
+}));
 
 describe("fetchAllPrices", () => {
   const mockResponse = {
@@ -73,33 +81,30 @@ describe("fetchAllPrices", () => {
   });
 
   it("should log errors if fetch fails", async () => {
-    const consoleSpy = jest
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
+    const { logger } = require("../util/logger");
     (fetch as jest.Mock).mockRejectedValue(new Error("API down"));
 
     await priceFetcher.fetchAllPrices();
 
-    expect(consoleSpy).toHaveBeenCalledWith(
-      "Background fetch error:",
+    expect(logger.error).toHaveBeenCalledWith(
       expect.any(Error),
+      "Price fetch failed",
     );
-
-    consoleSpy.mockRestore();
   });
 });
 
 describe("startBackgroundFetcher", () => {
   it("should start the background fetcher", () => {
     jest.useFakeTimers();
-    const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    const { logger } = require("../util/logger");
 
     priceFetcher.startBackgroundFetcher();
 
-    expect(logSpy).toHaveBeenCalledWith("Background price fetcher started");
-    expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 2900);
+    expect(logger.info).toHaveBeenCalledWith(
+      "Background price fetcher started",
+    );
+    expect(setInterval).toHaveBeenCalledWith(expect.any(Function), 19000);
 
-    logSpy.mockRestore();
     jest.useRealTimers();
   });
 });

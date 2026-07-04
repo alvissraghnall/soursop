@@ -1,9 +1,14 @@
 import { Telegraf, Scenes, session, SessionStore } from "telegraf";
 import { buyWizard, BuyContext, BuyState } from "./commands/buy";
+import { sellWizard, SellContext, SellState } from "./commands/sell";
 import {
+  handleBalanceCommand,
   handleGenerateCommand,
   handleImportCommand,
   handleImportWalletTextMessage,
+  handleSettingsCommand,
+  handleSettingsCallback,
+  handleWalletsCommand,
   sendHelpMessage,
   sendWelcomeMessage,
 } from "./commands";
@@ -11,17 +16,20 @@ import { connectDB } from "./db";
 import { getRequiredEnv } from "./util/env-helper";
 import { setupKafka } from "./kafka";
 import { startBackgroundFetcher } from "./services/price-fetcher";
-import { redis } from "./redis";
+import { redis, connectRedis } from "./redis";
 import { Redis } from "@telegraf/session/redis";
 import { WizardSession } from "telegraf/scenes";
+import { logger } from "./util/logger";
 
-const bot = new Telegraf<BuyContext>(getRequiredEnv("BOT_TOKEN"));
-const stage = new Scenes.Stage<BuyContext>([buyWizard]);
+type BotContext = BuyContext & SellContext;
+
+const bot = new Telegraf<BotContext>(getRequiredEnv("BOT_TOKEN"));
+const stage = new Scenes.Stage<BotContext>([buyWizard, sellWizard]);
 
 const knownCommands = new Set<string>();
 const userStates = new Map();
 
-const store: SessionStore<WizardSession<BuyState>> = Redis({
+const store: SessionStore<WizardSession<BuyState & SellState>> = Redis({
   client: redis,
 });
 
@@ -29,7 +37,6 @@ bot.use(session({ store }));
 
 connectDB();
 
-//bot.use(session());
 bot.use(stage.middleware());
 
 bot.start(sendWelcomeMessage);
@@ -48,6 +55,22 @@ knownCommands.add("/import");
 
 bot.command("buy", (ctx) => ctx.scene.enter("BUY_WIZARD"));
 knownCommands.add("/buy");
+
+bot.command("sell", (ctx) => ctx.scene.enter("SELL_WIZARD"));
+knownCommands.add("/sell");
+
+bot.command("balance", handleBalanceCommand);
+knownCommands.add("/balance");
+
+bot.command("wallets", handleWalletsCommand);
+knownCommands.add("/wallets");
+
+bot.command("settings", handleSettingsCommand);
+knownCommands.add("/settings");
+
+bot.action(/set_default:.+/, handleSettingsCallback);
+bot.action(/slippage:.+/, handleSettingsCallback);
+bot.action("noop", handleSettingsCallback);
 
 bot.on("text", async (ctx, next) => {
   const messageText = ctx.message.text;
@@ -70,13 +93,14 @@ bot.on("text", async (ctx, next) => {
 });
 
 async function start() {
+  await connectRedis();
   await setupKafka();
   startBackgroundFetcher();
-  bot.launch().then(() => console.log("Bot UP!"));
-  console.log("All services running");
+  bot.launch().then(() => logger.info("Bot UP!"));
+  logger.info("All services running");
 }
 
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
 
-start().catch(console.error);
+start().catch((err) => logger.error(err, "Failed to start bot"));

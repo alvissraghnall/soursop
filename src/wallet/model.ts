@@ -7,6 +7,7 @@ import {
 } from "@typegoose/typegoose";
 import { MongoError, MongoServerError } from "mongodb";
 import mongoose from "mongoose";
+import { logger } from "../util/logger";
 
 @modelOptions({ schemaOptions: { timestamps: true } })
 class Wallet {
@@ -56,7 +57,6 @@ class Wallet {
 
       return await wallet.save();
     } catch (error) {
-      console.log(typeof error);
       if (
         error instanceof mongoose.mongo.MongoServerError &&
         error.code === 11000

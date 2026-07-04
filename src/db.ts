@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { logger } from "./util/logger";
 
 export const connectDB = async () => {
   try {
@@ -6,10 +7,10 @@ export const connectDB = async () => {
       process.env.MONGO_URI || "mongodb://localhost:27017/soursop",
       {},
     );
-    console.log("MongoDB connected");
+    logger.info("MongoDB connected");
   } catch (err) {
     if (err instanceof Error) {
-      console.error(err.message);
+      logger.error(err, "MongoDB connection error");
     }
     process.exit(1);
   }

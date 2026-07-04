@@ -1,4 +1,5 @@
 import { Kafka, Partitioners } from "kafkajs";
+import { logger } from "./util/logger";
 
 const kafka = new Kafka({
   clientId: "soursop",
@@ -33,8 +34,8 @@ export async function setupKafka() {
     await consumer.connect();
     await consumer.subscribe({ topic: "price-updates", fromBeginning: false });
 
-    console.log("✅ Kafka connected and topic created");
+    logger.info("Kafka connected and topic created");
   } catch (error) {
-    console.error("Kafka setup error:", error);
+    logger.error(error, "Kafka setup error");
   }
 }

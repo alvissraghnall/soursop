@@ -1,6 +1,7 @@
 import { producer } from "../kafka";
 import { cachePrice, getCachedPrice } from "../redis";
-import axios from "axios";
+import fetch from "cross-fetch";
+import { logger } from "../util/logger";
 
 const PAIRS = ["solana-usd", "bonk-usd"];
 
@@ -15,11 +16,12 @@ export async function fetchAllPrices() {
     const vsCurrencies = [...new Set(PAIRS.map((p) => p.split("-")[1]))];
 
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coins.join(",")}&vs_currencies=${vsCurrencies.join(",")}`;
-    const res = await axios.get(url, { timeout: 5000 });
+    const res = await fetch(url);
+    const data = await res.json();
 
     for (const pair of PAIRS) {
       const [coin, vs] = pair.split("-");
-      const price = res.data[coin]?.[vs];
+      const price = data[coin]?.[vs];
 
       if (price) {
         await cachePrice(pair, price);
@@ -33,10 +35,9 @@ export async function fetchAllPrices() {
       }
     }
 
-    console.log(`✅ Prices updated at ${new Date().toISOString()}`);
+    logger.info({ pairs: PAIRS }, "Prices updated");
   } catch (error) {
-    if (error instanceof Error)
-      console.error("❌ Price fetch failed:", error.message);
+    if (error instanceof Error) logger.error(error, "Price fetch failed");
   } finally {
     isFetching = false;
   }
@@ -46,5 +47,5 @@ export function startBackgroundFetcher() {
   fetchAllPrices();
 
   setInterval(fetchAllPrices, 19000);
-  console.log("🔄 Background price fetcher started");
+  logger.info("Background price fetcher started");
 }

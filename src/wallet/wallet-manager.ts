@@ -16,6 +16,7 @@ import {
 import { GenerateError } from "../errors/generate.error";
 import { GetBalanceError } from "../errors/get-balance.error";
 import { ExportKeyError } from "../errors/export-key.error";
+import { logger } from "../util/logger";
 
 export interface WalletInfo {
   publicKey: CryptoKey;
@@ -130,7 +131,6 @@ export class WalletManager {
       .then((client) => {
         if (this.isValidAddress(publicKey)) {
           const pubKey = address(publicKey);
-          console.log(pubKey);
           return client.rpc.getBalance(pubKey).send();
         } else {
           throw new GetBalanceError("Invalid address provided", {
@@ -139,12 +139,11 @@ export class WalletManager {
         }
       })
       .then(({ value }) => {
-        console.log(value);
         return value.valueOf() / 1_000_000_000n;
       })
       .catch((err) => {
         const error = err as Error;
-        console.error(error.message);
+        logger.error(error, "Failed to get balance");
         throw new GetBalanceError("Failed to get balance", { cause: error });
       });
   }
@@ -167,13 +166,15 @@ export class WalletManager {
         new Uint8Array(exportedPrivateKey.slice(16)),
       );
 
-      console.log(" Public Key (bs58):", publicKeyBs58);
-      console.log(" Private Key (bs58):", privateKeyBs58);
+      logger.debug(
+        { publicKey: publicKeyBs58, privateKey: privateKeyBs58 },
+        "Exported keypair",
+      );
 
       return [privateKeyBs58, publicKeyBs58];
     } catch (err) {
       const error = err as Error;
-      console.error("Error exporting keys:", err);
+      logger.error(error, "Error exporting keys");
       throw new ExportKeyError("Failed to export keypair: " + error.message);
     }
   }
@@ -205,8 +206,6 @@ export class WalletManager {
     const encryptedMnemonic =
       wallet.mnemonic &&
       (await encrypt(wallet.mnemonic, PASSWORD)).toString("base64");
-
-    console.log(publicKey, address(publicKey));
 
     const newWallet = await WalletModel.createAndSave({
       userId,
@@ -268,8 +267,15 @@ export class WalletManager {
     return reconstructedWallets;
   }
 
-  async retrieveAndConstructDefault(userId: number): Promise<WalletInfo> {
-    const walletFromDb = await WalletModel.findOne({ default: true }).exec();
+  async retrieveAndConstructDefault(
+    userId: number,
+  ): Promise<WalletInfo | null> {
+    const walletFromDb = await WalletModel.findOne({
+      userId,
+      default: true,
+    }).exec();
+
+    if (!walletFromDb) return null;
 
     return this.reconstructWalletInfo(walletFromDb);
   }

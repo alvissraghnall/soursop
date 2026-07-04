@@ -1,33 +1,27 @@
-import { Scenes, Telegraf } from "telegraf";
+import { Scenes } from "telegraf";
 import {
-  getBuyQuote,
-  getQuote,
+  getSellQuote,
+  getSwapInstructions,
+  executeSwap,
   getTokenInfo,
   getTokenMetadata,
 } from "../swap/jupiter";
-import { WalletInfo, WalletManager } from "../wallet/wallet-manager";
-import {
-  getJupiterQuote,
-  executeSwap,
-  getSwapInstructions,
-} from "../swap/jupiter";
-import { Message, CallbackQuery } from "telegraf/typings/core/types/typegram";
+import { WalletManager } from "../wallet/wallet-manager";
+import { Message } from "telegraf/typings/core/types/typegram";
 import { logger } from "../util/logger";
 
-const { enter, leave } = Scenes.Stage;
-
-export interface BuyState extends Scenes.WizardSessionData {
+export interface SellState extends Scenes.WizardSessionData {
   tokenAddress?: string;
   amount?: number;
   tokenMetadata?: { name: string; symbol: string; decimals: number };
 }
 
-export type BuyContext = Scenes.WizardContext<BuyState>;
+export type SellContext = Scenes.WizardContext<SellState>;
 
-const buyWizard = new Scenes.WizardScene<BuyContext>(
-  "BUY_WIZARD",
+const sellWizard = new Scenes.WizardScene<SellContext>(
+  "SELL_WIZARD",
   async (ctx) => {
-    await ctx.reply("🪙 Please send the token address you want to **buy**.");
+    await ctx.reply("🪙 Please send the token address you want to **sell**.");
     return ctx.wizard.next();
   },
   async (ctx) => {
@@ -38,23 +32,20 @@ const buyWizard = new Scenes.WizardScene<BuyContext>(
       return ctx.reply("❌ Please provide a valid token address.");
     }
 
-    const tokenAddress = input;
-
     try {
-      const tokenInfo = await getTokenInfo(tokenAddress);
+      const tokenInfo = await getTokenInfo(input);
       if (!tokenInfo.isInitialized) {
         return ctx.reply("❌ Invalid token address. Please try again.");
       }
 
-      const metadata = await getTokenMetadata(tokenAddress);
+      const metadata = await getTokenMetadata(input);
 
       if (!metadata) {
         return ctx.reply("❌ No token found for address provided.");
       }
 
-      // Explicitly type the state
-      const state = ctx.wizard.state as BuyState;
-      state.tokenAddress = tokenAddress;
+      const state = ctx.wizard.state as SellState;
+      state.tokenAddress = input;
       state.tokenMetadata = {
         name: metadata.name,
         symbol: metadata.symbol,
@@ -62,7 +53,7 @@ const buyWizard = new Scenes.WizardScene<BuyContext>(
       };
 
       await ctx.reply(
-        `✅ Token found: ${metadata.name} (${metadata.symbol})\nNow enter amount to buy (e.g. 1.5):`,
+        `✅ Token found: ${metadata.name} (${metadata.symbol})\nNow enter amount to sell (e.g. 100):`,
       );
       return ctx.wizard.next();
     } catch (error) {
@@ -87,22 +78,16 @@ const buyWizard = new Scenes.WizardScene<BuyContext>(
       );
     }
 
-    // Explicitly type the state
-    const state = ctx.wizard.state as BuyState;
+    const state = ctx.wizard.state as SellState;
     const { tokenMetadata } = state;
     if (!tokenMetadata) {
       return ctx.reply("❌ Token information not found. Please start over.");
     }
 
-    // const amountRaw = BigInt(Math.floor(amount * 10 ** tokenMetadata.decimals));
     state.amount = amount;
 
     const userId = ctx.message?.from.id;
-
-    if (!userId)
-      return ctx.reply(
-        "No associated user wallet found! Please generate or import a wallet to continue.",
-      );
+    if (!userId) return ctx.reply("❌ No associated user wallet found!");
 
     let walletManager = new WalletManager();
     let defaultWallet = await walletManager.retrieveAndConstructDefault(userId);
@@ -116,7 +101,6 @@ const buyWizard = new Scenes.WizardScene<BuyContext>(
 
     try {
       const solBalance = await walletManager.getBalance(defaultWallet.address);
-
       const estimatedFee = BigInt(0.002 * 1e9);
 
       if (solBalance < estimatedFee) {
@@ -125,14 +109,14 @@ const buyWizard = new Scenes.WizardScene<BuyContext>(
       }
 
       await ctx.reply(
-        `🛒 You are about to buy *${amount} ${tokenMetadata.symbol}*.\nEstimated fee: 0.002 SOL.`,
+        `🛒 You are about to sell *${amount} ${tokenMetadata.symbol}*.\nEstimated fee: 0.002 SOL.`,
         {
           parse_mode: "Markdown",
           reply_markup: {
             inline_keyboard: [
               [
-                { text: "✅ Confirm", callback_data: "buy_confirm" },
-                { text: "❌ Cancel", callback_data: "buy_cancel" },
+                { text: "✅ Confirm", callback_data: "sell_confirm" },
+                { text: "❌ Cancel", callback_data: "sell_cancel" },
               ],
             ],
           },
@@ -145,7 +129,6 @@ const buyWizard = new Scenes.WizardScene<BuyContext>(
       return ctx.reply("❌ Error checking wallet balance. Please try again.");
     }
   },
-
   async (ctx) => {
     if ("callback_query" in ctx.update) {
       const callbackQuery = ctx.update.callback_query;
@@ -156,10 +139,7 @@ const buyWizard = new Scenes.WizardScene<BuyContext>(
         await ctx.answerCbQuery();
 
         const userId = ctx.update.callback_query.from.id;
-
-        if (!userId) {
-          return ctx.reply("No associated user wallet found!");
-        }
+        if (!userId) return ctx.reply("No associated user wallet found!");
 
         let walletManager = new WalletManager();
         let defaultWallet =
@@ -172,13 +152,13 @@ const buyWizard = new Scenes.WizardScene<BuyContext>(
           return ctx.scene.leave();
         }
 
-        if (callbackData === "buy_cancel") {
-          await ctx.reply("❎ Buy cancelled.");
+        if (callbackData === "sell_cancel") {
+          await ctx.reply("❎ Sell cancelled.");
           return ctx.scene.leave();
         }
 
-        if (callbackData === "buy_confirm") {
-          const state = ctx.wizard.state as BuyState;
+        if (callbackData === "sell_confirm") {
+          const state = ctx.wizard.state as SellState;
           const { tokenAddress, amount, tokenMetadata } = state;
 
           if (
@@ -194,7 +174,7 @@ const buyWizard = new Scenes.WizardScene<BuyContext>(
           }
 
           try {
-            const quote = await getBuyQuote(tokenAddress, amount);
+            const quote = await getSellQuote(tokenAddress, amount);
             const swapInstructions = await getSwapInstructions(
               quote.rawQuote,
               defaultWallet.address,
@@ -220,4 +200,4 @@ const buyWizard = new Scenes.WizardScene<BuyContext>(
   },
 );
 
-export { buyWizard };
+export { sellWizard };

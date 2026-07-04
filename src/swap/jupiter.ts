@@ -38,6 +38,7 @@ import { findAssociatedTokenPda } from "@solana-program/token";
 import { borshDeserialize, BorshSchema } from "borsher";
 import { JupiterQuote, QuoteResponse } from "./jupiter-quote";
 import { SOL_MINT } from "../util/constants";
+import { logger } from "../util/logger";
 
 function sanitizeString(str: string): string {
   return str.replace(/\0/g, "").trim();
@@ -98,7 +99,7 @@ export const getTokenMetadata = async (tokenMint: string) => {
       tokenLogo = result.image;
     } catch (error) {
       tokenLogo = null;
-      console.log("Can't fetch URI");
+      logger.warn("Failed to fetch token URI: %s", tokenURI);
     } finally {
       const metadata = {
         name: tokenName,
@@ -106,7 +107,7 @@ export const getTokenMetadata = async (tokenMint: string) => {
         logo: tokenLogo,
       };
 
-      console.log(metadata);
+      logger.debug(metadata, "Token metadata");
       return metadata;
     }
   }
@@ -208,7 +209,7 @@ export async function getQuote(params: QuoteRequest): Promise<JupiterQuote> {
 
     return new JupiterQuote(quoteResponse);
   } catch (error) {
-    console.error("Error getting quote:", error);
+    logger.error(error, "Error getting quote");
     throw error instanceof Error ? error : new Error("Unknown error occurred");
   }
 }
@@ -410,7 +411,7 @@ export const getSwapInstructions = async (
 
     return await response.json();
   } catch (error) {
-    console.error("Error getting swap instructions:", error);
+    logger.error(error, "Error getting swap instructions");
     throw new Error(
       `Failed to get swap instructions: ${error instanceof Error ? error.message : "Unknown error"}`,
     );

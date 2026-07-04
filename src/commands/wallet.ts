@@ -1,6 +1,7 @@
 import { Context } from "telegraf";
 import { WalletManager } from "../wallet/wallet-manager";
 import { UserStates } from "../util/constants";
+import { logger } from "../util/logger";
 
 export async function handleGenerateCommand(ctx: Context) {
   try {
@@ -63,8 +64,6 @@ export async function handleImportWalletTextMessage(
   const userId = ctx.from.id;
   const userState = userStates.get(userId);
 
-  console.log(ctx.from);
-
   if (userState === UserStates.AWAITING_IMPORT) {
     const input = ctx.message.text.trim();
     const walletManager = new WalletManager();
@@ -79,7 +78,7 @@ export async function handleImportWalletTextMessage(
 
       const walletId = await walletManager.store(wallet, userId);
 
-      console.log(walletId);
+      logger.debug({ userId, walletId }, "Wallet imported");
 
       await ctx.deleteMessage(ctx.message.message_id);
 

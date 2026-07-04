@@ -1,6 +1,6 @@
 
 .env.keys
 node_modules
-
+dist
 coverage
 
